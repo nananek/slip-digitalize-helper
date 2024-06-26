@@ -152,7 +152,8 @@
                 // Add existing text inputs
                 fields[currentFieldIndex].texts[currentPage] = fields[currentFieldIndex].texts[currentPage] || [''];
                 fields[currentFieldIndex].texts[currentPage].forEach((text, index) => {
-                    addTextInput(text, index === fields[currentFieldIndex].texts[currentPage].length - 1).focus();
+                    const input = addTextInput(text, index === fields[currentFieldIndex].texts[currentPage].length - 1);
+                    input.focus();
                 });
                 updateButtonStates();
             }
@@ -160,14 +161,19 @@
             function addTextInput(value, isLast) {
                 const inputGroup = $('<div class="text-input-group">');
                 const input = $('<input type="text" class="form-control user-input">').val(value);
+                const removeButton = $('<button class="btn btn-danger">-</button>');
+
                 inputGroup.append(input);
+                if ($('.text-input-group').length > 0) {
+                    inputGroup.append(removeButton);
+                }
                 if (isLast) {
-                    const button = $('<button class="btn btn-secondary add-text-button">+</button>');
-                    button.click(function() {
+                    const addButton = $('<button class="btn btn-secondary add-text-button">+</button>');
+                    addButton.click(function() {
                         fields[currentFieldIndex].texts[currentPage].push('');
                         updateFieldLabel();
                     });
-                    inputGroup.append(button);
+                    inputGroup.append(addButton);
                 }
                 $('#textInputContainer').append(inputGroup);
 
@@ -176,12 +182,20 @@
                     fields[currentFieldIndex].texts[currentPage][index] = $(this).val();
                 });
 
-                input.on('keypress', function(e) {
-                    if (e.which === 13) { // Enter key pressed
-                        if (!areAllTextboxesEmpty()) {
-                            $('#nextButton').click();
-                        }
+                input.on('keydown', function(e) {
+                    if (e.ctrlKey && e.key === 'Enter') { // Ctrl + Enter key pressed
+                        $('#nextButton').click();
+                    } else if (e.shiftKey && e.key === 'Enter') { // Shift + Enter key pressed
+                        $('#prevButton').click();
+                    } else if (e.key === 'ArrowDown') { // Arrow Down key pressed
+                        $('.add-text-button').click();
                     }
+                });
+
+                removeButton.click(function() {
+                    const index = $(this).parent().index();
+                    fields[currentFieldIndex].texts[currentPage].splice(index, 1);
+                    updateFieldLabel();
                 });
 
                 return input;
