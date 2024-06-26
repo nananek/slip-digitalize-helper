@@ -1,10 +1,12 @@
 import argparse
-from flask import Flask, request, redirect, url_for, render_template, send_file, jsonify
+from flask import Flask, request, redirect, url_for, render_template, send_file, jsonify, session
 import os
 import shutil
 from pdf2image import convert_from_path
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key'  # Change this to a secret key of your choice
+
 UPLOAD_FOLDER = 'uploads'
 TEMP_FOLDER = 'temp'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -72,6 +74,30 @@ def get_page(number):
 @app.route('/setting')
 def setting():
     return render_template('setting.html')
+
+@app.route('/go', methods=['POST'])
+def go():
+    fields = request.json
+    session['fields'] = fields
+    return 'Fields received', 200
+
+@app.route('/nfields', methods=['GET'])
+def nfields():
+    fields = session.get('fields', [])
+    return jsonify(nfields=len(fields))
+
+@app.route('/get_total_pages', methods=['GET'])
+def get_total_pages():
+    return jsonify(total_pages=current_pdf_pages)
+
+@app.route('/get_fields', methods=['GET'])
+def get_fields():
+    fields = session.get('fields', [])
+    return jsonify(fields=fields)
+
+@app.route('/work')
+def work():
+    return render_template('work.html')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Flask server to upload and process PDF files")

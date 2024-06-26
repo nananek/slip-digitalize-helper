@@ -63,13 +63,24 @@
             let currentField = null;
             let isDrawing = false;
             let pdfImage = null;
+            let originalWidth, originalHeight;
 
             function resizeCanvas() {
-                canvas.width = window.innerWidth * 0.75;
-                canvas.height = window.innerHeight;
-                if (pdfImage) {
-                    drawCanvas();
+                const aspectRatio = originalWidth / originalHeight;
+                const viewportWidth = window.innerWidth * 0.75;
+                const viewportHeight = window.innerHeight;
+
+                if (viewportWidth / viewportHeight > aspectRatio) {
+                    // Fit height
+                    canvas.height = viewportHeight;
+                    canvas.width = viewportHeight * aspectRatio;
+                } else {
+                    // Fit width
+                    canvas.width = viewportWidth;
+                    canvas.height = viewportWidth / aspectRatio;
                 }
+
+                drawCanvas();
             }
 
             function drawCanvas() {
@@ -77,11 +88,13 @@
                 if (pdfImage) {
                     context.drawImage(pdfImage, 0, 0, canvas.width, canvas.height);
                 }
+                const scaleX = canvas.width / originalWidth;
+                const scaleY = canvas.height / originalHeight;
                 fields.forEach(field => {
                     context.strokeStyle = 'red';
-                    context.strokeRect(field.x, field.y, field.width, field.height);
+                    context.strokeRect(field.x * scaleX, field.y * scaleY, field.width * scaleX, field.height * scaleY);
                     context.fillStyle = 'red';
-                    context.fillText(field.name, field.x + 5, field.y + 15);
+                    context.fillText(field.name, (field.x + 5) * scaleX, (field.y + 15) * scaleY);
                 });
             }
 
@@ -97,6 +110,10 @@
                         </div>
                     `);
                 });
+                list.append('<button id="goButton" class="btn btn-success mt-3">GO!</button>');
+
+                // Focus the textbox of the last field
+                list.find('.field-item').last().find('.field-name').focus();
             }
 
             $(document).on('input', '.field-name', function() {
@@ -116,12 +133,35 @@
                 drawCanvas();
             });
 
+            $(document).on('click', '#goButton', function() {
+                const fieldData = fields.map(field => ({
+                    name: field.name,
+                    left_top: { x: field.x, y: field.y },
+                    right_bottom: { x: field.x + field.width, y: field.y + field.height }
+                }));
+
+                $.ajax({
+                    url: '/go',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(fieldData),
+                    success: function(response) {
+                        window.location.href = '/work';
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        alert('Failed to send field data. Please try again.');
+                    }
+                });
+            });
+
             canvas.addEventListener('mousedown', function(e) {
                 isDrawing = true;
                 const rect = canvas.getBoundingClientRect();
+                const scaleX = originalWidth / canvas.width;
+                const scaleY = originalHeight / canvas.height;
                 currentField = {
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY,
                     width: 0,
                     height: 0,
                     name: 'Field ' + (fields.length + 1)
@@ -132,8 +172,10 @@
             canvas.addEventListener('mousemove', function(e) {
                 if (!isDrawing) return;
                 const rect = canvas.getBoundingClientRect();
-                currentField.width = e.clientX - rect.left - currentField.x;
-                currentField.height = e.clientY - rect.top - currentField.y;
+                const scaleX = originalWidth / canvas.width;
+                const scaleY = originalHeight / canvas.height;
+                currentField.width = (e.clientX - rect.left) * scaleX - currentField.x;
+                currentField.height = (e.clientY - rect.top) * scaleY - currentField.y;
                 drawCanvas();
             });
 
@@ -147,22 +189,10 @@
                 .then(blob => {
                     const img = new Image();
                     img.onload = function() {
-                        const aspectRatio = img.width / img.height;
-                        const viewportWidth = window.innerWidth * 0.75;
-                        const viewportHeight = window.innerHeight;
-
-                        if (viewportWidth / viewportHeight > aspectRatio) {
-                            // Fit height
-                            canvas.height = viewportHeight;
-                            canvas.width = viewportHeight * aspectRatio;
-                        } else {
-                            // Fit width
-                            canvas.width = viewportWidth;
-                            canvas.height = viewportWidth / aspectRatio;
-                        }
-
+                        originalWidth = img.width;
+                        originalHeight = img.height;
                         pdfImage = img;
-                        drawCanvas();
+                        resizeCanvas();
                     }
                     img.src = URL.createObjectURL(blob);
                 })
@@ -171,7 +201,6 @@
                 });
 
             window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
         });
     </script>
 </body>
