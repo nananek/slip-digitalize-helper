@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Started</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <style>
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            display: none;
+            position: absolute;
+            z-index: 10;
+        }
+        .position-relative {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Get Started</h1>
+        <div class="text-center mt-4 position-relative">
+            <input type="file" id="pdfInput" accept="application/pdf" style="display: none;">
+            <button id="loadPdfButton" class="btn btn-primary">Load PDF</button>
+            <div class="spinner-border text-primary" role="status" id="loadingSpinner">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('#loadPdfButton').click(function() {
+                $('#pdfInput').click();
+            });
+
+            $('#pdfInput').change(function(event) {
+                var file = event.target.files[0];
+                if (file) {
+                    var formData = new FormData();
+                    formData.append('pdf', file);
+
+                    var buttonOffset = $('#loadPdfButton').offset();
+                    var buttonWidth = $('#loadPdfButton').outerWidth();
+                    var buttonHeight = $('#loadPdfButton').outerHeight();
+
+                    $('#loadingSpinner').css({
+                        top: buttonOffset.top + buttonHeight / 2 - $('#loadingSpinner').height() / 2,
+                        left: buttonOffset.left + buttonWidth / 2 - $('#loadingSpinner').width() / 2
+                    });
+
+                    $('#loadingSpinner').show();
+                    $('#loadPdfButton').prop('disabled', true);
+
+                    $.ajax({
+                        url: '/loadpdf',
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            window.location.href = '/setting';
+                        },
+                        error: function(jqXHR, textStatus, errorThrown) {
+                            alert('Failed to upload PDF. Please try again.');
+                            $('#loadingSpinner').hide();
+                            $('#loadPdfButton').prop('disabled', false);
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
