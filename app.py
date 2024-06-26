@@ -1,11 +1,14 @@
 import argparse
-from flask import Flask, request, redirect, url_for, render_template, send_file, jsonify, session
 import os
 import shutil
+import csv
+import itertools
+from io import StringIO
+from flask import Flask, request, redirect, url_for, render_template, send_file, jsonify, session, make_response
 from pdf2image import convert_from_path
+import secrets
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Change this to a secret key of your choice
 
 UPLOAD_FOLDER = 'uploads'
 TEMP_FOLDER = 'temp'
@@ -59,10 +62,6 @@ def save_pdf_pages_as_png(pdf_path, output_folder):
         image.save(image_path, 'PNG')
     return len(images)
 
-@app.route('/npages', methods=['GET'])
-def get_number_of_pages():
-    return jsonify(npages=current_pdf_pages)
-
 @app.route('/page/<int:number>', methods=['GET'])
 def get_page(number):
     image_path = os.path.join(app.config['TEMP_FOLDER'], f'page_{number}.png')
@@ -81,11 +80,6 @@ def go():
     session['fields'] = fields
     return 'Fields received', 200
 
-@app.route('/nfields', methods=['GET'])
-def nfields():
-    fields = session.get('fields', [])
-    return jsonify(nfields=len(fields))
-
 @app.route('/get_total_pages', methods=['GET'])
 def get_total_pages():
     return jsonify(total_pages=current_pdf_pages)
@@ -95,6 +89,27 @@ def get_fields():
     fields = session.get('fields', [])
     return jsonify(fields=fields)
 
+@app.route('/download', methods=['POST'])
+def download():
+    data = request.json
+    si = StringIO()
+    cw = csv.writer(si)
+    print(data)
+
+    cw.writerow([field['name'] for field in data])
+
+    keys = set(itertools.chain(*(field['texts'].keys() for field in data)))
+    for key in keys:
+        values = [field['texts'].get(key, []) for field in data]
+        maxlen = max(map(len, values))
+        for i in range(maxlen):
+          cw.writerow([(value[i] if i < len(value) else value[-1]) for value in values])
+    
+    output = make_response(si.getvalue().encode('cp932', errors = 'replace'))
+    output.headers["Content-Disposition"] = "attachment; filename=fields.csv"
+    output.headers["Content-type"] = "text/csv; charset=Shift_JIS"
+    return output
+
 @app.route('/work')
 def work():
     return render_template('work.html')
@@ -103,6 +118,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Flask server to upload and process PDF files")
     parser.add_argument('--host', type=str, default='127.0.0.1', help='IP address to bind to')
     parser.add_argument('--port', type=int, default=5000, help='Port number to bind to')
+    parser.add_argument('--secret_key', type=str, help='Secret key for the Flask session')
     args = parser.parse_args()
+
+    if args.secret_key:
+        app.secret_key = args.secret_key
+    else:
+        app.secret_key = secrets.token_urlsafe(24)
+        print(f"Generated secret key: {app.secret_key}")
 
     app.run(host=args.host, port=args.port, debug=True)

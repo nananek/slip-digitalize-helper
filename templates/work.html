@@ -8,6 +8,8 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <!-- jQuery -->
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <style>
         body, html {
             margin: 0;
@@ -35,15 +37,51 @@
             width: 200px;
             margin: 0 10px;
         }
+        .text-input-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .text-input-group input[type="text"] {
+            margin-right: 10px;
+        }
+        .text-input-group button {
+            height: 38px;
+        }
+        .text-input-group + .text-input-group {
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <canvas id="pdfCanvas"></canvas>
     <div class="controls">
-        <button id="prevButton" class="btn btn-primary">Prev</button>
-        <label id="fieldLabel" for="userInput">Field:</label>
-        <input type="text" id="userInput" class="form-control">
-        <button id="nextButton" class="btn btn-primary">Next</button>
+        <button id="prevButton" class="btn btn-primary" disabled>Prev</button>
+        <label id="fieldLabel" class="ml-2"></label>
+        <button id="nextButton" class="btn btn-primary ml-2">Next</button>
+    </div>
+    <div id="textInputContainer" class="controls"></div>
+
+    <!-- Modal -->
+    <div class="modal fade" id="completionModal" tabindex="-1" role="dialog" aria-labelledby="completionModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="completionModalLabel">Process Complete</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    You have reached the end of the document.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="downloadButton">Download</button>
+                    <button type="button" class="btn btn-secondary" id="getStartedButton">New Work</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -108,7 +146,60 @@
             }
 
             function updateFieldLabel() {
-                $('#fieldLabel').text(`Field: ${fields[currentFieldIndex].name}`);
+                $('#fieldLabel').text(`${fields[currentFieldIndex].name}`);
+                // Clear existing text inputs
+                $('#textInputContainer').empty();
+                // Add existing text inputs
+                fields[currentFieldIndex].texts[currentPage] = fields[currentFieldIndex].texts[currentPage] || [''];
+                fields[currentFieldIndex].texts[currentPage].forEach((text, index) => {
+                    addTextInput(text, index === fields[currentFieldIndex].texts[currentPage].length - 1).focus();
+                });
+                updateButtonStates();
+            }
+
+            function addTextInput(value, isLast) {
+                const inputGroup = $('<div class="text-input-group">');
+                const input = $('<input type="text" class="form-control user-input">').val(value);
+                inputGroup.append(input);
+                if (isLast) {
+                    const button = $('<button class="btn btn-secondary add-text-button">+</button>');
+                    button.click(function() {
+                        fields[currentFieldIndex].texts[currentPage].push('');
+                        updateFieldLabel();
+                    });
+                    inputGroup.append(button);
+                }
+                $('#textInputContainer').append(inputGroup);
+
+                input.on('input', function() {
+                    const index = $(this).parent().index();
+                    fields[currentFieldIndex].texts[currentPage][index] = $(this).val();
+                });
+
+                input.on('keypress', function(e) {
+                    if (e.which === 13) { // Enter key pressed
+                        if (!areAllTextboxesEmpty()) {
+                            $('#nextButton').click();
+                        }
+                    }
+                });
+
+                return input;
+            }
+
+            function areAllTextboxesEmpty() {
+                let allEmpty = true;
+                $('#textInputContainer input').each(function() {
+                    if ($(this).val().trim() !== '') {
+                        allEmpty = false;
+                    }
+                });
+                return allEmpty;
+            }
+
+            function updateButtonStates() {
+                $('#prevButton').prop('disabled', currentPage === 1 && currentFieldIndex === 0);
+                $('#nextButton').prop('disabled', false);
             }
 
             $('#prevButton').click(function() {
@@ -125,12 +216,47 @@
             $('#nextButton').click(function() {
                 if (currentPage < totalPages) {
                     currentPage++;
-                } else {
+                } else if (currentFieldIndex < fields.length - 1) {
                     currentPage = 1;
-                    currentFieldIndex = (currentFieldIndex < fields.length - 1) ? currentFieldIndex + 1 : 0;
+                    currentFieldIndex++;
+                } else {
+                    // Show modal when the last field and last page are reached
+                    $('#completionModal').modal('show');
+                    return;
                 }
                 loadPdfPage(currentPage);
                 updateFieldLabel();
+            });
+
+            $('#downloadButton').click(function() {
+                const data = fields.map(field => ({
+                    name: field.name,
+                    texts: field.texts
+                }));
+                $.ajax({
+                    url: '/download',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function(response) {
+                        const blob = new Blob([response], { type: 'text/csv' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = 'fields.csv';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        alert('Failed to download CSV. Please try again.');
+                    }
+                });
+            });
+
+            $('#getStartedButton').click(function() {
+                window.location.href = '/';
             });
 
             $(window).resize(resizeCanvas);
@@ -144,7 +270,10 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    fields = data.fields;
+                    fields = data.fields.map(field => ({
+                        ...field,
+                        texts: field.texts || {} // Initialize texts object if not present
+                    }));
                     if (fields.length > 0) {
                         loadPdfPage(currentPage);
                         updateFieldLabel();
